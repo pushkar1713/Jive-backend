@@ -1,22 +1,33 @@
 {
-  "name": "Jive",
+  "name": "jive",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write ./src/**/*.{ts,json,md}",
+    "prettier:check": "prettier --check ./src/**/*.{ts,json,md}"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.6.3",
   "devDependencies": {
+    "@eslint/js": "^9.27.0",
     "@types/node": "^22.15.19",
-    "prisma": "^6.8.2"
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "eslint": "^9.27.0",
+    "globals": "^16.1.0",
+    "prettier": "^3.5.3",
+    "prisma": "^6.8.2",
+    "typescript-eslint": "^8.32.1"
   },
   "dependencies": {
     "@types/express": "^5.0.2",
     "dotenv": "^16.5.0",
+    "eslint-plugin-prettier": "^5.4.0",
     "express": "^5.1.0"
   }
 }
