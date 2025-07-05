@@ -3,7 +3,7 @@ import { serverConfig } from "./config/serverConfig.js";
 import cors from "cors";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./lib/auth.js";
-
+import userRouter from "./routes/user.js";
 const app = express();
 
 app.use(
@@ -21,6 +21,8 @@ app.use(express.json());
 app.get("/ping", (req, res) => {
   res.send("pong");
 });
+
+app.use("/api/v1/user", userRouter);
 
 app.get("/api/me", async (req, res) => {
   const session = await auth.api.getSession({
