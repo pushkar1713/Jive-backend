@@ -4,6 +4,7 @@ import cors from "cors";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import userRouter from "./routes/user.routes.js";
+import workspaceRouter from "./routes/workspace.routes.js";
 const app = express();
 
 app.use(
@@ -23,6 +24,7 @@ app.get("/ping", (req, res) => {
 });
 
 app.use("/api/v1/user", userRouter);
+app.use("/api/v1/workspace", workspaceRouter);
 
 app.get("/api/me", async (req, res) => {
   const session = await auth.api.getSession({

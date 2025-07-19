@@ -11,4 +11,8 @@ router.get("/profileData", verifyAuth, (req: Request, res: Response) => {
   UserController.getUserProfile(req, res);
 });
 
+router.get("/:id", verifyAuth, (req: Request, res: Response) => {
+  UserController.getUserbyId(req, res);
+});
+
 export default router;
