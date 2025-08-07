@@ -1,0 +1,816 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+config/
+  service/
+    getWorkspaceByCode.ts
+  serverConfig.ts
+controllers/
+  channel.controller.ts
+  user.controller.ts
+  workspace.controller.ts
+db/
+  auth-schema.ts
+  schema.ts
+lib/
+  auth.ts
+middlewares/
+  validation.ts
+  verify-auth.ts
+routes/
+  user.routes.ts
+  workspace.routes.ts
+validations/
+  workspace.validator.ts
+app.ts
+index.ts
+
+================================================================
+Files
+================================================================
+
+================
+File: config/service/getWorkspaceByCode.ts
+================
+import { db } from "../src/index.js";
+import { workspace } from "../src/db/schema.js";
+import { eq } from "drizzle-orm";
+
+export async function getWorkspaceByJoinCode(joinCode: string) {
+  if (joinCode.length !== 6 || !joinCode) {
+    return Error("Invalid join code");
+  }
+  try {
+    const result = await db
+      .select()
+      .from(workspace)
+      .where(eq(workspace.joincode, joinCode));
+    return result;
+  } catch (error) {
+    console.error(error);
+    return Error("Internal server error");
+  }
+}
+
+================
+File: config/serverConfig.ts
+================
+import dotenv from "dotenv";
+
+dotenv.config();
+
+export const serverConfig = {
+  port: process.env.PORT || 3000,
+};
+
+export const databaseConfig = {
+  url: process.env.DATABASE_URL,
+};
+
+================
+File: controllers/channel.controller.ts
+================
+import { Request, Response } from "express";
+import { db } from "../index.js";
+import { channel, channelMembers } from "../db/schema.js";
+import { eq } from "drizzle-orm";
+
+export class ChannelController {
+  static async getChannelsOfWorkspace(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+    if (!workspaceId) {
+      res.status(400).json({ message: "Workspace ID is required" });
+      return;
+    }
+    try {
+      const result = await db
+        .select()
+        .from(channel)
+        .where(eq(channel.workspaceId, workspaceId));
+      res.status(200).json(result);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+  static async createChannel(req: Request, res: Response): Promise<void> {
+    const { workspaceId, name, type } = req.body as {
+      workspaceId: string;
+      name: string;
+      type?: "default" | "chat" | "convene";
+    };
+    if (!workspaceId || !name) {
+      res
+        .status(400)
+        .json({ message: "either workspaceId or name is missing" });
+      return;
+    }
+    try {
+      const result = await db
+        .insert(channel)
+        .values({
+          workspaceId,
+          name,
+          type,
+        })
+        .returning();
+      res.status(200).json({ message: "Channel created", result });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+  static async addMemberToChannel(req: Request, res: Response): Promise<void> {
+    const { channelId, memberId } = req.body as {
+      channelId: string;
+      memberId: string;
+    };
+    if (!channelId || !memberId) {
+      res
+        .status(400)
+        .json({ message: "either channelId or memberId is missing" });
+      return;
+    }
+    try {
+      const result = await db
+        .insert(channelMembers)
+        .values({
+          channelId,
+          userId: memberId,
+        })
+        .returning();
+      res.status(200).json({ message: "Member added to channel", result });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+}
+
+================
+File: controllers/user.controller.ts
+================
+import { Request, Response } from "express";
+import { db } from "../index.js";
+import { user } from "../db/auth-schema.js";
+import { eq } from "drizzle-orm";
+
+export class UserController {
+  static async getUserProfile(req: Request, res: Response): Promise<void> {
+    const id = req.user?.id;
+    if (!id) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    try {
+      const userData = await db.select().from(user).where(eq(user.id, id));
+      if (!userData) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+      res.status(200).json(userData);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async getUserbyId(req: Request, res: Response): Promise<void> {
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ message: "User ID is required" });
+      return;
+    }
+    try {
+      const userData = await db.select().from(user).where(eq(user.id, id));
+      if (!userData) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+      res.status(200).json(userData);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+}
+
+================
+File: controllers/workspace.controller.ts
+================
+import { Request, Response } from "express";
+import { createWorkspaceType } from "../validations/workspace.validator.js";
+import { db } from "../index.js";
+import {
+  channel,
+  workspace,
+  workspaceMembers,
+  channelMembers,
+} from "../db/schema.js";
+import { v4 as uuidv4 } from "uuid";
+import { and, eq } from "drizzle-orm";
+import { getWorkspaceByJoinCode } from "../../service/getWorkspaceByCode.js";
+
+export class WorkspaceController {
+  static async createWorkspace(req: Request, res: Response): Promise<void> {
+    const { name, description } = req.body as createWorkspaceType;
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    try {
+      const workspaceData = await db.transaction(async (tx) => {
+        const joinCode = uuidv4().substring(0, 6).toUpperCase();
+        const workspacePayload = await tx
+          .insert(workspace)
+          .values({
+            name,
+            description,
+            joincode: joinCode,
+          })
+          .returning();
+        const workspaceMemberPayload = await tx
+          .insert(workspaceMembers)
+          .values({
+            workspaceId: workspacePayload[0].id,
+            userId,
+            role: "admin",
+          })
+          .returning();
+        const channelPayload = await tx
+          .insert(channel)
+          .values({
+            workspaceId: workspacePayload[0].id,
+            name: "general",
+            type: "default",
+          })
+          .returning();
+        const channelMemberPayload = await tx
+          .insert(channelMembers)
+          .values({
+            channelId: channelPayload[0].id,
+            userId,
+          })
+          .returning();
+        return {
+          workspace: workspacePayload,
+          workspaceMember: workspaceMemberPayload,
+          channel: channelPayload,
+          channelMember: channelMemberPayload,
+        };
+      });
+      res.status(201).json(workspaceData);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+  static async getWorkspacesOfUser(req: Request, res: Response): Promise<void> {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    try {
+      const result = await db
+        .select({
+          workspace: workspaceMembers.workspaceId,
+        })
+        .from(workspaceMembers)
+        .innerJoin(workspace, eq(workspaceMembers.workspaceId, workspace.id))
+        .where(eq(workspaceMembers.userId, userId));
+      res.status(200).json(result);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async joinWorkspace(req: Request, res: Response): Promise<void> {
+    const { joinCode } = req.params as { joinCode: string };
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    try {
+      const workspace = await getWorkspaceByJoinCode(joinCode);
+      console.log(workspace);
+      if (workspace instanceof Error) {
+        res.status(400).json({ message: "Invalid join code" });
+        return;
+      }
+
+      const isMember = await db
+        .select()
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspace[0].id),
+            eq(workspaceMembers.userId, userId),
+          ),
+        );
+      if (isMember.length > 0) {
+        res.status(400).json({ message: "Already a member of this workspace" });
+        return;
+      }
+
+      const addMember = await db
+        .insert(workspaceMembers)
+        .values({
+          workspaceId: workspace[0].id,
+          role: "member",
+          userId,
+        })
+        .returning();
+      res.status(200).json({ message: "Joined workspace", addMember });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+  static async addMemberToWorkspace(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const { workspaceId, memberId } = req.body as {
+      workspaceId: string;
+      memberId: string;
+    };
+    if (!workspaceId || !memberId) {
+      res
+        .status(400)
+        .json({ message: "either workspaceId or memberId is missing" });
+      return;
+    }
+    try {
+      const isMember = await db
+        .select()
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, memberId),
+          ),
+        );
+      if (isMember.length > 0) {
+        res
+          .status(400)
+          .json({ message: "Member already exists in this workspace" });
+        return;
+      }
+      const addMember = await db
+        .insert(workspaceMembers)
+        .values({
+          workspaceId,
+          userId: memberId,
+          role: "member",
+        })
+        .returning();
+
+      const getChannel = await db
+        .select()
+        .from(channel)
+        .where(
+          and(
+            eq(channel.workspaceId, workspaceId),
+            eq(channel.type, "default"),
+          ),
+        );
+
+      const addMemberToChannel = await db
+        .insert(channelMembers)
+        .values({
+          channelId: getChannel[0].id,
+          userId: memberId,
+        })
+        .returning();
+      res.status(200).json({
+        message: "Member added to workspace",
+        addMember,
+        addMemberToChannel,
+      });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+}
+
+================
+File: db/auth-schema.ts
+================
+import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+
+export const user = pgTable("user", {
+					id: text('id').primaryKey(),
+					name: text('name').notNull(),
+ email: text('email').notNull().unique(),
+ emailVerified: boolean('email_verified').$defaultFn(() => false).notNull(),
+ image: text('image'),
+ createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+ updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date()).notNull(),
+ username: text('username').unique(),
+ displayUsername: text('display_username')
+				});
+
+export const session = pgTable("session", {
+					id: text('id').primaryKey(),
+					expiresAt: timestamp('expires_at').notNull(),
+ token: text('token').notNull().unique(),
+ createdAt: timestamp('created_at').notNull(),
+ updatedAt: timestamp('updated_at').notNull(),
+ ipAddress: text('ip_address'),
+ userAgent: text('user_agent'),
+ userId: text('user_id').notNull().references(()=> user.id, { onDelete: 'cascade' })
+				});
+
+export const account = pgTable("account", {
+					id: text('id').primaryKey(),
+					accountId: text('account_id').notNull(),
+ providerId: text('provider_id').notNull(),
+ userId: text('user_id').notNull().references(()=> user.id, { onDelete: 'cascade' }),
+ accessToken: text('access_token'),
+ refreshToken: text('refresh_token'),
+ idToken: text('id_token'),
+ accessTokenExpiresAt: timestamp('access_token_expires_at'),
+ refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+ scope: text('scope'),
+ password: text('password'),
+ createdAt: timestamp('created_at').notNull(),
+ updatedAt: timestamp('updated_at').notNull()
+				});
+
+export const verification = pgTable("verification", {
+					id: text('id').primaryKey(),
+					identifier: text('identifier').notNull(),
+ value: text('value').notNull(),
+ expiresAt: timestamp('expires_at').notNull(),
+ createdAt: timestamp('created_at').$defaultFn(() => /* @__PURE__ */ new Date()),
+ updatedAt: timestamp('updated_at').$defaultFn(() => /* @__PURE__ */ new Date())
+				});
+
+================
+File: db/schema.ts
+================
+import { pgTable, timestamp, varchar, text, pgEnum } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema.js";
+
+export const roleEnum = pgEnum("role", ["admin", "member"]);
+export const channelTypeEnum = pgEnum("channelType", [
+  "default",
+  "chat",
+  "convene",
+]);
+export const channelPermission = pgEnum("channelPermission", [
+  "public",
+  "private",
+]);
+
+export const workspace = pgTable("workspace", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  joincode: varchar("joincode", { length: 6 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const channel = pgTable("channel", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name").notNull(),
+  workspaceId: text("workspace_id").references(() => workspace.id),
+  channelPermission: channelPermission("channelPermisson").default("public"),
+  type: channelTypeEnum("channelType").default("default"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const workspaceMembers = pgTable("workspace_members", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id").references(() => workspace.id),
+  userId: text("user_id").references(() => user.id),
+  role: roleEnum("role").default("member"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const channelMembers = pgTable("channel_members", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  channelId: text("channel_id").references(() => channel.id),
+  userId: text("user_id").references(() => user.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const messages = pgTable("messages", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  content: text("content").notNull(),
+  image: text("image"),
+  senderId: text("sender_id").references(() => user.id),
+  channelId: text("channel_id").references(() => channel.id),
+  workspaceId: text("workspace_id").references(() => workspace.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+================
+File: lib/auth.ts
+================
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { drizzle } from "drizzle-orm/neon-http";
+import * as schema from "../db/auth-schema.js";
+import { databaseConfig } from "../config/serverConfig.js";
+import { neon } from "@neondatabase/serverless";
+import { username, openAPI } from "better-auth/plugins";
+
+const sql = neon(databaseConfig.url!);
+const db = drizzle({ client: sql, schema });
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, {
+    provider: "pg",
+    schema,
+  }),
+  emailAndPassword: {
+    enabled: true,
+  },
+  plugins: [username(), openAPI()],
+});
+
+================
+File: middlewares/validation.ts
+================
+import { ZodType } from "zod";
+import { Request, Response, NextFunction } from "express";
+
+export const validate = (schema: ZodType) => {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const result = schema.safeParse(req.body);
+      if (!result.success) {
+        res.status(400).json({ message: result.error.message });
+        return;
+      }
+      next();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  };
+};
+
+================
+File: middlewares/verify-auth.ts
+================
+import { Request, Response, NextFunction } from "express";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "../lib/auth.js";
+import { User } from "better-auth";
+
+declare module "express" {
+  export interface Request {
+    user?: User;
+  }
+}
+
+export const verifyAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  req.user = session.user;
+  next();
+};
+
+================
+File: routes/user.routes.ts
+================
+import { Router, Request, Response } from "express";
+import { UserController } from "../controllers/user.controller.js";
+import { verifyAuth } from "../middlewares/verify-auth.js";
+const router = Router();
+
+router.get("/", (req: Request, res: Response) => {
+  res.send("this is the user router");
+});
+
+router.get("/profileData", verifyAuth, (req: Request, res: Response) => {
+  UserController.getUserProfile(req, res);
+});
+
+router.get("/:id", verifyAuth, (req: Request, res: Response) => {
+  UserController.getUserbyId(req, res);
+});
+
+export default router;
+
+================
+File: routes/workspace.routes.ts
+================
+import { Router } from "express";
+import { WorkspaceController } from "../controllers/workspace.controller.js";
+import { validate } from "../middlewares/validation.js";
+import { createWorkspaceSchema } from "../validations/workspace.validator.js";
+import { verifyAuth } from "../middlewares/verify-auth.js";
+
+const router = Router();
+
+router.post(
+  "/create",
+  validate(createWorkspaceSchema),
+  verifyAuth,
+  WorkspaceController.createWorkspace,
+);
+
+router.post("/join/:joinCode", verifyAuth, WorkspaceController.joinWorkspace);
+
+router.get("/test", (req, res) => {
+  res.status(200).json({ message: "test" });
+  return;
+});
+
+router.post("/test2", (req, res) => {
+  res.status(200).json({ message: "test2" });
+  return;
+});
+
+router.post(
+  "/add-member",
+  verifyAuth,
+  WorkspaceController.addMemberToWorkspace,
+);
+
+export default router;
+
+================
+File: validations/workspace.validator.ts
+================
+import { z } from "zod";
+
+export const createWorkspaceSchema = z.object({
+  name: z.string().min(6, "name must be at least 6 characters long"),
+  description: z.string().optional(),
+});
+
+export type createWorkspaceType = z.infer<typeof createWorkspaceSchema>;
+
+================
+File: app.ts
+================
+import express from "express";
+import { serverConfig } from "./config/serverConfig.js";
+import { Server } from "socket.io";
+import cors from "cors";
+import { createServer } from "http";
+import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
+import { auth } from "./lib/auth.js";
+import userRouter from "./routes/user.routes.js";
+import workspaceRouter from "./routes/workspace.routes.js";
+
+const app = express();
+const server = createServer(app);
+const io = new Server(server);
+
+app.use(
+  cors({
+    origin: "http://localhost:5173", //frontend domain,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  }),
+);
+
+io.on("connection", (socket) => {
+  console.log("a user connected", socket.id);
+  socket.emit("demo2", { message: "Hello from server" });
+  socket.on("demo", (data) => {
+    console.log(data);
+  });
+});
+
+app.all("/api/auth/*splat", toNodeHandler(auth));
+
+app.use(express.json());
+
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
+
+app.use("/api/v1/user", userRouter);
+app.use("/api/v1/workspace", workspaceRouter);
+
+app.get("/api/me", async (req, res) => {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  res.json(session);
+});
+
+server.listen(serverConfig.port, () => {
+  console.log(`Server is running on port ${serverConfig.port}`);
+});
+
+================
+File: index.ts
+================
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { databaseConfig } from "./config/serverConfig.js";
+import ws from "ws";
+
+neonConfig.webSocketConstructor = ws;
+
+const sql = new Pool({ connectionString: databaseConfig.url });
+export const db = drizzle({ client: sql });
+
+
+
+================================================================
+End of Codebase
+================================================================

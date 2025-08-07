@@ -13,4 +13,22 @@ router.post(
   WorkspaceController.createWorkspace,
 );
 
+router.post("/join/:joinCode", verifyAuth, WorkspaceController.joinWorkspace);
+
+router.get("/test", (req, res) => {
+  res.status(200).json({ message: "test" });
+  return;
+});
+
+router.post("/test2", (req, res) => {
+  res.status(200).json({ message: "test2" });
+  return;
+});
+
+router.post(
+  "/add-member",
+  verifyAuth,
+  WorkspaceController.addMemberToWorkspace,
+);
+
 export default router;
