@@ -3,6 +3,8 @@ import { WorkspaceController } from "../controllers/workspace.controller.js";
 import { validate } from "../middlewares/validation.js";
 import { createWorkspaceSchema } from "../validations/workspace.validator.js";
 import { verifyAuth } from "../middlewares/verify-auth.js";
+import { checkPermission } from "../middlewares/checkPermission.js";
+import { Scope } from "../middlewares/checkPermission.js";
 
 const router = Router();
 
@@ -15,15 +17,12 @@ router.post(
 
 router.post("/join/:joinCode", verifyAuth, WorkspaceController.joinWorkspace);
 
-router.get("/test", (req, res) => {
-  res.status(200).json({ message: "test" });
-  return;
-});
-
-router.post("/test2", (req, res) => {
-  res.status(200).json({ message: "test2" });
-  return;
-});
+router.delete(
+  "/delete/:workspaceId",
+  verifyAuth,
+  checkPermission({ required: "admin", scope: Scope.WORKSPACE }),
+  WorkspaceController.deleteWorkspace,
+);
 
 router.post(
   "/add-member",

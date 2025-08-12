@@ -1,13 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../lib/auth.js";
-import { User } from "better-auth";
-
-declare module "express" {
-  export interface Request {
-    user?: User;
-  }
-}
 
 export const verifyAuth = async (
   req: Request,

@@ -10,6 +10,7 @@ const sql = neon(databaseConfig.url!);
 const db = drizzle({ client: sql, schema });
 
 export const auth = betterAuth({
+  trustedOrigins: ["http://localhost:3001"],
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,

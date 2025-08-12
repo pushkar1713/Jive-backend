@@ -7,25 +7,42 @@ import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import userRouter from "./routes/user.routes.js";
 import workspaceRouter from "./routes/workspace.routes.js";
-
+import { verifyAuth } from "./middlewares/verify-auth.js";
 const app = express();
 const server = createServer(app);
-const io = new Server(server);
+
+const io = new Server(server, {
+  path: "/api/auth/socket.io",
+  cors: {
+    origin: "http://localhost:3001",
+    credentials: true,
+  },
+});
 
 app.use(
   cors({
-    origin: "http://localhost:5173", //frontend domain,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: "http://localhost:3001", //frontend domain,
     credentials: true,
   }),
 );
 
-io.on("connection", (socket) => {
-  console.log("a user connected", socket.id);
-  socket.emit("demo2", { message: "Hello from server" });
-  socket.on("demo", (data) => {
-    console.log(data);
+io.use(async (socket, next) => {
+  // app.use(verifyAuth);
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(socket.handshake.headers),
   });
+  if (!session) {
+    next(new Error("Unauthorized"));
+    return;
+  }
+  socket.data.user = session.user;
+  console.log(socket.data.user);
+  next();
+});
+
+io.on("connection", (socket) => {
+  console.log("socket connected", socket.id, socket.data.user?.id);
+  socket.emit("me", { id: socket.data.user?.id ?? null });
 });
 
 app.all("/api/auth/*splat", toNodeHandler(auth));

@@ -1,5 +1,5 @@
-import { db } from "../src/index.js";
-import { workspace } from "../src/db/schema.js";
+import { db } from "../index.js";
+import { workspace } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 
 export async function getWorkspaceByJoinCode(joinCode: string) {

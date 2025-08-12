@@ -352,19 +352,19 @@ export class WorkspaceController {
     }
   }
   static async deleteWorkspace(req: Request, res: Response): Promise<void> {
-    const { workspaceId } = req.params as { workspaceId: string };
+    const { workspaceId } = req.params;
     const userId = req.user?.id;
     if (!userId) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
-    const isOwner = await checkOwner(workspaceId, userId);
-    if (!isOwner) {
-      res
-        .status(403)
-        .json({ message: "You are not the owner of this workspace" });
-      return;
-    }
+    // const isOwner = await checkOwner(workspaceId, userId);
+    // if (!isOwner) {
+    //   res
+    //     .status(403)
+    //     .json({ message: "You are not the owner of this workspace" });
+    //   return;
+    // }
     try {
       const result = await db
         .delete(workspace)

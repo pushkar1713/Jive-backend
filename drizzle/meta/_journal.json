@@ -8,6 +8,13 @@
       "when": 1754563550825,
       "tag": "0000_worthless_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1754645123057,
+      "tag": "0001_brief_rictor",
+      "breakpoints": true
     }
   ]
 }

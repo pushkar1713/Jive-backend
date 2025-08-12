@@ -18,9 +18,18 @@
 1. add member to channel
 2. create channel
 
+### what is done
+1. socket.io basic connection with the frontend with a bit of socket auth
+2. signin with email connected to the frontend
+3. permission middleware
+
 ### what to add now
 1. queues, producer, consumer for mailing and stuff
 2. indexing in db
 3. get messages for a channel in a workspace (use pagination)
 4. socket io implementation
-5. abstract userId and owner check and make them middlewares
+5. abstract userId middleware
+6. global error handler
+7. global types
+8. dummuy delete
+9. file upload in object storage

@@ -47,8 +47,6 @@ Additional Info:
 Directory Structure
 ================================================================
 config/
-  service/
-    getWorkspaceByCode.ts
   serverConfig.ts
 controllers/
   channel.controller.ts
@@ -65,6 +63,9 @@ middlewares/
 routes/
   user.routes.ts
   workspace.routes.ts
+services/
+  checkOwner.ts
+  getWorkspaceByCode.ts
 validations/
   workspace.validator.ts
 app.ts
@@ -73,29 +74,6 @@ index.ts
 ================================================================
 Files
 ================================================================
-
-================
-File: config/service/getWorkspaceByCode.ts
-================
-import { db } from "../src/index.js";
-import { workspace } from "../src/db/schema.js";
-import { eq } from "drizzle-orm";
-
-export async function getWorkspaceByJoinCode(joinCode: string) {
-  if (joinCode.length !== 6 || !joinCode) {
-    return Error("Invalid join code");
-  }
-  try {
-    const result = await db
-      .select()
-      .from(workspace)
-      .where(eq(workspace.joincode, joinCode));
-    return result;
-  } catch (error) {
-    console.error(error);
-    return Error("Internal server error");
-  }
-}
 
 ================
 File: config/serverConfig.ts
@@ -144,10 +122,11 @@ export class ChannelController {
     }
   }
   static async createChannel(req: Request, res: Response): Promise<void> {
-    const { workspaceId, name, type } = req.body as {
+    const { workspaceId, name, type, isDefault } = req.body as {
       workspaceId: string;
       name: string;
-      type?: "default" | "chat" | "convene";
+      type: "chat" | "convene";
+      isDefault: boolean;
     };
     if (!workspaceId || !name) {
       res
@@ -162,6 +141,7 @@ export class ChannelController {
           workspaceId,
           name,
           type,
+          isDefault,
         })
         .returning();
       res.status(200).json({ message: "Channel created", result });
@@ -263,10 +243,12 @@ import {
   workspace,
   workspaceMembers,
   channelMembers,
+  workspaceChannels,
 } from "../db/schema.js";
 import { v4 as uuidv4 } from "uuid";
 import { and, eq } from "drizzle-orm";
-import { getWorkspaceByJoinCode } from "../../service/getWorkspaceByCode.js";
+import { getWorkspaceByJoinCode } from "../services/getWorkspaceByCode.js";
+import { checkOwner } from "../services/checkOwner.js";
 
 export class WorkspaceController {
   static async createWorkspace(req: Request, res: Response): Promise<void> {
@@ -292,7 +274,7 @@ export class WorkspaceController {
           .values({
             workspaceId: workspacePayload[0].id,
             userId,
-            role: "admin",
+            role: "owner",
           })
           .returning();
         const channelPayload = await tx
@@ -300,21 +282,14 @@ export class WorkspaceController {
           .values({
             workspaceId: workspacePayload[0].id,
             name: "general",
-            type: "default",
-          })
-          .returning();
-        const channelMemberPayload = await tx
-          .insert(channelMembers)
-          .values({
-            channelId: channelPayload[0].id,
-            userId,
+            type: "chat",
+            isDefault: true,
           })
           .returning();
         return {
           workspace: workspacePayload,
           workspaceMember: workspaceMemberPayload,
           channel: channelPayload,
-          channelMember: channelMemberPayload,
         };
       });
       res.status(201).json(workspaceData);
@@ -325,6 +300,7 @@ export class WorkspaceController {
       return;
     }
   }
+
   static async getWorkspacesOfUser(req: Request, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) {
@@ -393,6 +369,7 @@ export class WorkspaceController {
       return;
     }
   }
+
   static async addMemberToWorkspace(
     req: Request,
     res: Response,
@@ -405,6 +382,18 @@ export class WorkspaceController {
       res
         .status(400)
         .json({ message: "either workspaceId or memberId is missing" });
+      return;
+    }
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    const isOwner = await checkOwner(workspaceId, userId);
+    if (!isOwner) {
+      res
+        .status(403)
+        .json({ message: "You are not the owner of this workspace" });
       return;
     }
     try {
@@ -438,7 +427,7 @@ export class WorkspaceController {
         .where(
           and(
             eq(channel.workspaceId, workspaceId),
-            eq(channel.type, "default"),
+            eq(channel.isDefault, true),
           ),
         );
 
@@ -454,6 +443,170 @@ export class WorkspaceController {
         addMember,
         addMemberToChannel,
       });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async getWorkspaceMembers(req: Request, res: Response): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+    if (!workspaceId) {
+      res.status(400).json({ message: "workspaceId is missing" });
+      return;
+    }
+    try {
+      const members = await db
+        .select()
+        .from(workspaceMembers)
+        .where(eq(workspaceMembers.workspaceId, workspaceId));
+      res.status(200).json(members);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async getWorkspaceChannelsAll(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+
+    if (!workspaceId) {
+      res.status(400).json({ message: "workspaceId is missing" });
+      return;
+    }
+
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const isOwner = await checkOwner(workspaceId, userId);
+
+    if (!isOwner) {
+      res
+        .status(403)
+        .json({ message: "You are not the owner of this workspace" });
+      return;
+    }
+    try {
+      const channels = await db
+        .select()
+        .from(workspaceChannels)
+        .innerJoin(channel, eq(workspaceChannels.channelId, channel.id))
+        .where(eq(workspaceChannels.workspaceId, workspaceId));
+      res.status(200).json(channels);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async getWorkspaceChannelsUser(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+
+    if (!workspaceId) {
+      res.status(400).json({ message: "workspaceId is missing" });
+      return;
+    }
+
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    try {
+      const channels = await db
+        .select()
+        .from(channelMembers)
+        .innerJoin(channel, eq(channelMembers.channelId, channel.id))
+        .where(
+          and(
+            eq(workspaceChannels.workspaceId, workspaceId),
+            eq(channelMembers.userId, userId),
+          ),
+        );
+      res.status(200).json(channels);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async editWorkspace(req: Request, res: Response): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    const isOwner = await checkOwner(workspaceId, userId);
+
+    if (!isOwner) {
+      res
+        .status(403)
+        .json({ message: "You are not the owner of this workspace" });
+      return;
+    }
+
+    const { name, description } = req.body as {
+      name: string;
+      description: string;
+    };
+
+    try {
+      const result = await db
+        .update(workspace)
+        .set({
+          name,
+          description,
+        })
+        .where(eq(workspace.id, workspaceId))
+        .returning();
+      res.status(200).json(result);
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+  static async deleteWorkspace(req: Request, res: Response): Promise<void> {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    const isOwner = await checkOwner(workspaceId, userId);
+    if (!isOwner) {
+      res
+        .status(403)
+        .json({ message: "You are not the owner of this workspace" });
+      return;
+    }
+    try {
+      const result = await db
+        .delete(workspace)
+        .where(eq(workspace.id, workspaceId));
+      res.status(200).json({ message: "Workspace deleted" });
       return;
     } catch (error) {
       console.error(error);
@@ -519,15 +672,25 @@ export const verification = pgTable("verification", {
 ================
 File: db/schema.ts
 ================
-import { pgTable, timestamp, varchar, text, pgEnum } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  timestamp,
+  varchar,
+  text,
+  pgEnum,
+  boolean,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth-schema.js";
+import { sql } from "drizzle-orm";
 
-export const roleEnum = pgEnum("role", ["admin", "member"]);
-export const channelTypeEnum = pgEnum("channelType", [
-  "default",
-  "chat",
-  "convene",
+export const roleEnum = pgEnum("role", [
+  "admin",
+  "member",
+  "moderator",
+  "owner",
 ]);
+export const channelTypeEnum = pgEnum("channelType", ["chat", "convene"]);
 export const channelPermission = pgEnum("channelPermission", [
   "public",
   "private",
@@ -544,17 +707,26 @@ export const workspace = pgTable("workspace", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const channel = pgTable("channel", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  name: varchar("name").notNull(),
-  workspaceId: text("workspace_id").references(() => workspace.id),
-  channelPermission: channelPermission("channelPermisson").default("public"),
-  type: channelTypeEnum("channelType").default("default"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const channel = pgTable(
+  "channel",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    name: varchar("name").notNull(),
+    workspaceId: text("workspace_id").references(() => workspace.id),
+    channelPermission: channelPermission("channelPermission").default("public"),
+    type: channelTypeEnum("channelType").notNull().default("chat"),
+    isDefault: boolean("is_default").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_ws_default")
+      .on(t.workspaceId)
+      .where(sql`${t.isDefault} = true`),
+  ],
+);
 
 export const workspaceMembers = pgTable("workspace_members", {
   id: text("id")
@@ -566,12 +738,21 @@ export const workspaceMembers = pgTable("workspace_members", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const workspaceChannels = pgTable("workspace_channels", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id").references(() => workspace.id),
+  channelId: text("channel_id").references(() => channel.id),
+});
+
 export const channelMembers = pgTable("channel_members", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   channelId: text("channel_id").references(() => channel.id),
   userId: text("user_id").references(() => user.id),
+  role: roleEnum("role").default("member"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -728,6 +909,49 @@ router.post(
 );
 
 export default router;
+
+================
+File: services/checkOwner.ts
+================
+import { workspaceMembers } from "../db/schema.js";
+import { db } from "../index.js";
+import { and, eq } from "drizzle-orm";
+
+export const checkOwner = async (workspaceId: string, userId: string) => {
+  const workspaceMember = await db
+    .select()
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+      ),
+    );
+  return workspaceMember[0].role === "owner";
+};
+
+================
+File: services/getWorkspaceByCode.ts
+================
+import { db } from "../index.js";
+import { workspace } from "../db/schema.js";
+import { eq } from "drizzle-orm";
+
+export async function getWorkspaceByJoinCode(joinCode: string) {
+  if (joinCode.length !== 6 || !joinCode) {
+    return Error("Invalid join code");
+  }
+  try {
+    const result = await db
+      .select()
+      .from(workspace)
+      .where(eq(workspace.joincode, joinCode));
+    return result;
+  } catch (error) {
+    console.error(error);
+    return Error("Internal server error");
+  }
+}
 
 ================
 File: validations/workspace.validator.ts
