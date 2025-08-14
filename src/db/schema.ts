@@ -6,6 +6,7 @@ import {
   pgEnum,
   boolean,
   uniqueIndex,
+  bigint,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema.js";
 import { sql } from "drizzle-orm";
@@ -91,6 +92,18 @@ export const messages = pgTable("messages", {
   senderId: text("sender_id").references(() => user.id),
   channelId: text("channel_id").references(() => channel.id),
   workspaceId: text("workspace_id").references(() => workspace.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const messageAttachments = pgTable("message_attachments", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  messageId: text("message_id").references(() => messages.id),
+  key: text("key").notNull(),
+  contentType: text("content_type").notNull(),
+  size: bigint("size", { mode: "number" }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

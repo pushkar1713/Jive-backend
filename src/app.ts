@@ -7,7 +7,7 @@ import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./lib/auth.js";
 import userRouter from "./routes/user.routes.js";
 import workspaceRouter from "./routes/workspace.routes.js";
-import { verifyAuth } from "./middlewares/verify-auth.js";
+import uploadRouter from "./routes/upload.routes.js";
 const app = express();
 const server = createServer(app);
 
@@ -27,7 +27,6 @@ app.use(
 );
 
 io.use(async (socket, next) => {
-  // app.use(verifyAuth);
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(socket.handshake.headers),
   });
@@ -55,6 +54,7 @@ app.get("/ping", (req, res) => {
 
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/workspace", workspaceRouter);
+app.use("/api/v1/uploads", uploadRouter);
 
 app.get("/api/me", async (req, res) => {
   const session = await auth.api.getSession({

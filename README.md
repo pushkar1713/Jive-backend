@@ -22,6 +22,8 @@
 1. socket.io basic connection with the frontend with a bit of socket auth
 2. signin with email connected to the frontend
 3. permission middleware
+4. join rooms socket controller done
+5. file upload for object storage
 
 ### what to add now
 1. queues, producer, consumer for mailing and stuff
@@ -32,4 +34,4 @@
 6. global error handler
 7. global types
 8. dummuy delete
-9. file upload in object storage
+9. personal message and join room controller for default channel
