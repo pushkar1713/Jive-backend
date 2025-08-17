@@ -24,6 +24,8 @@
 3. permission middleware
 4. join rooms socket controller done
 5. file upload for object storage
+6. message broadcast in channels using socket
+7. message and attachments saving in the database
 
 ### what to add now
 1. queues, producer, consumer for mailing and stuff
@@ -32,6 +34,5 @@
 4. socket io implementation
 5. abstract userId middleware
 6. global error handler
-7. global types
 8. dummuy delete
 9. personal message and join room controller for default channel

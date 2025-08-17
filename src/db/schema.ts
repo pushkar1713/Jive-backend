@@ -88,7 +88,6 @@ export const messages = pgTable("messages", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   content: text("content").notNull(),
-  image: text("image"),
   senderId: text("sender_id").references(() => user.id),
   channelId: text("channel_id").references(() => channel.id),
   workspaceId: text("workspace_id").references(() => workspace.id),
