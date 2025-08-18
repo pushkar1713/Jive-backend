@@ -45,7 +45,7 @@ export class SocketController {
   }
   static async sendMessage(socket: Socket, io: Server) {
     socket.on(
-      "sendMessage",
+      "MESSAGE_SEND",
       async function sendMessageHandler(data: MessagePayload, cb) {
         try {
           if (!socket.data.user) {
@@ -77,7 +77,7 @@ export class SocketController {
             messageId: messageData.id,
           });
 
-          io.to(data.channelId).emit("message", {
+          io.to(data.channelId).emit("MESSAGE_DELIVERED", {
             message: messageData,
             attachment: attachmentData,
           });

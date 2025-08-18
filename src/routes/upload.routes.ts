@@ -11,6 +11,6 @@ router.post(
   UploadController.getPresignedUrl,
 );
 
-router.get("/", UploadController.getFileUrl);
+router.get("/", UploadController.getFileUrlEndpoint);
 
 export default router;
