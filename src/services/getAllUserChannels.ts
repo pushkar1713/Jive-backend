@@ -1,5 +1,5 @@
 import { db } from "../index.js";
-import { workspaceChannels, channelMembers } from "../db/schema.js";
+import { workspaceChannels, channelMembers, channel } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 
 export const getAllUserChannels = async (
@@ -22,5 +22,21 @@ export const getAllUserChannels = async (
       ),
     );
 
-  return result;
+  const defaultChannel = await db
+    .select({
+      channelId: channel.id,
+    })
+    .from(workspaceChannels)
+    .leftJoin(channel, eq(workspaceChannels.channelId, channel.id))
+    .where(
+      and(
+        eq(workspaceChannels.workspaceId, workspaceId),
+        eq(channel.isDefault, true),
+      ),
+    );
+
+  return {
+    result,
+    defaultChannel,
+  };
 };

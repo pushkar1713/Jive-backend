@@ -1,3 +1,9 @@
+// The pattern:
+/* 1. Leave ALL rooms (regardless of what we think user is in)
+2. Clear all tracking data
+3. Join new workspace rooms
+4. Update tracking with new data */
+
 import { Server, Socket } from "socket.io";
 import { getAllUserChannels } from "../services/getAllUserChannels.js";
 import { MessagePayload } from "../validations/message.validator.js";
@@ -5,16 +11,12 @@ import {
   handleAttachments,
   handleMessages,
 } from "../services/handleMessages.js";
-import { error } from "console";
 
 export class SocketController {
-  static async joinChannel(socket: Socket) {
+  static async joinWorkspace(socket: Socket) {
     socket.on(
       "joinChannel",
-      async function joinChannelHandler(
-        data: { workspaceId: string; channelId: string },
-        cb,
-      ) {
+      async function joinChannelHandler(data: { workspaceId: string }, cb) {
         try {
           if (!socket.data.user) {
             return socket.emit("error", {
@@ -23,19 +25,62 @@ export class SocketController {
             });
           }
 
+          const currentWorkspace = socket.data.currentWorkspace;
+
+          if (currentWorkspace && currentWorkspace !== data.workspaceId) {
+            console.log(
+              `User ${socket.data.user.id} switching workspaces: ${currentWorkspace} → ${data.workspaceId}`,
+            );
+            socket.data.joinedRooms.forEach((room: string) => {
+              socket.leave(room);
+              console.log(
+                `User ${socket.data.user.id} left room: ${room} (workspace switch)`,
+              );
+            });
+
+            socket.data.joinedRooms = [];
+          }
+
           const channels = await getAllUserChannels(
             data.workspaceId,
             socket.data.user.id,
           );
 
-          const result = channels
+          const result = channels.result
             .map((channel) => channel.channelId)
-            .filter((id): id is string => !!id)
-            .filter((id) => socket.join(id));
+            .filter((id): id is string => !!id);
+
+          // will be implemented later in the future
+
+          const joinedRooms: string[] = [];
+
+          result.forEach((channelId) => {
+            socket.join(channelId);
+            joinedRooms.push(channelId);
+            console.log(
+              `User ${socket.data.user.id} joined channel room: ${channelId}`,
+            );
+          });
+
+          if (!channels.defaultChannel[0].channelId) {
+            return socket.emit("error", {
+              success: false,
+              message: "No default channel found",
+            });
+          }
+
+          socket.join(channels.defaultChannel[0].channelId);
+          joinedRooms.push(channels.defaultChannel[0].channelId);
+          console.log(
+            `User ${socket.data.user.id} joined default channel: ${channels.defaultChannel[0].channelId}`,
+          );
+
+          socket.data.joinedRooms = joinedRooms;
+          socket.data.currentWorkspace = data.workspaceId;
 
           cb?.(null, {
             message: "Joined channel successfully",
-            roomId: data.channelId,
+            roomIds: joinedRooms,
           });
         } catch (error) {
           cb(error, null);
@@ -43,13 +88,88 @@ export class SocketController {
       },
     );
   }
+
+  /* static async leaveChannel(socket: Socket) {
+    socket.on(
+      "leaveChannel",
+      async function leaveChannelHandler(data: { channelId: string }, cb) {
+        try {
+          if (!socket.data.user) {
+            return socket.emit("error", {
+              success: false,
+              message: "User not authenticated",
+            });
+          }
+
+          const roomsData = socket.data.joinedRooms;
+
+          if (!roomsData.includes(data.channelId)) {
+            return socket.emit("error", {
+              success: false,
+              message: "User not in channel",
+            });
+          }
+
+          socket.leave(data.channelId);
+          socket.data.joinedRooms = socket.data.joinedRooms.filter(
+            (room: string) => room !== data.channelId,
+          );
+
+          cb?.(null, {
+            message: "Left channel successfully",
+          });
+        } catch (error) {
+          cb(error, null);
+        }
+      },
+    );
+  } */
+
+  /*   static async leaveWorkspace(socket: Socket) {
+    socket.on(
+      "leaveWorkspace",
+      async function leaveWorkspaceHandler(data: { workspaceId: string }, cb) {
+        try {
+          if (!socket.data.user) {
+            return socket.emit("error", {
+              success: false,
+              message: "User not authenticated",
+            });
+          }
+
+          const roomsData = socket.data.joinedRooms;
+
+          if (!roomsData.includes(data.workspaceId)) {
+            return socket.emit("error", {
+              success: false,
+              message: "User not in workspace",
+            });
+          }
+
+          socket.leave(data.workspaceId);
+
+          socket.data.joinedRooms = socket.data.joinedRooms.filter(
+            (room: string) => room !== data.workspaceId,
+          );
+
+          cb?.(null, {
+            message: "Left workspace successfully",
+          });
+        } catch (error) {
+          cb(error, null);
+        }
+      },
+    );
+  } */
+
   static async sendMessage(socket: Socket, io: Server) {
     socket.on(
       "MESSAGE_SEND",
       async function sendMessageHandler(data: MessagePayload, cb) {
         try {
           if (!socket.data.user) {
-            return cb(error, {
+            return socket.emit("error", {
+              success: false,
               message: "User not authenticated",
             });
           }

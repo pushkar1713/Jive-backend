@@ -27,6 +27,7 @@
 6. message broadcast in channels using socket
 7. message and attachments saving in the database
 8. get messages for a channel in a workspace (use pagination) with pre signed url for attachments
+9. default room for broadcasting messages, leave room logic
 
 ### what to add now
 1. queues, producer, consumer for mailing and stuff
@@ -34,8 +35,9 @@
 3. abstract userId middleware
 4. global error handler
 5. dummuy delete and edit messages
-6. personal message and join room controller for default channel
+6. personal message
 7. reactions, typing presense, mentions, search, threading/replies
 8. logging and analytics
 9. canvas
 10. voice chat, stream 
+11. send messages in the default channel
