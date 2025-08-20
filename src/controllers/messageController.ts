@@ -4,6 +4,10 @@ import { db } from "../index.js";
 import { messageAttachments, messages } from "../db/schema.js";
 import { desc, eq, and } from "drizzle-orm";
 import { UploadController } from "./upload.controller.js";
+import {
+  channelMembership,
+  workspaceMembership,
+} from "../services/checkMembership.js";
 
 export class MessageController {
   static async getMessages(req: Request, res: Response): Promise<void> {
@@ -57,6 +61,94 @@ export class MessageController {
       res.status(200).json({
         messages: transformedMessageData,
       });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async deleteMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const { messageId, workspaceId, channelId } = req.body as {
+        messageId: string;
+        workspaceId: string;
+        channelId: string;
+      };
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const isWorkspaceMember = await workspaceMembership(workspaceId, userId);
+      const isChannelMember = await channelMembership(channelId, userId);
+
+      if (!isWorkspaceMember || !isChannelMember) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      await db
+        .delete(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.senderId, userId)));
+
+      res.status(200).json({ message: "Message deleted" });
+      return;
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+      return;
+    }
+  }
+
+  static async updateMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const { messageId, content, workspaceId, channelId } = req.body as {
+        messageId: string;
+        content: string;
+        workspaceId: string;
+        channelId: string;
+      };
+
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const isWorkspaceMember = await workspaceMembership(workspaceId, userId);
+      const isChannelMember = await channelMembership(channelId, userId);
+
+      if (!isWorkspaceMember || !isChannelMember) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const message = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, messageId));
+
+      if (message.length === 0) {
+        res.status(404).json({ message: "Message not found" });
+        return;
+      }
+
+      if (message[0].senderId !== userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      await db
+        .update(messages)
+        .set({ content })
+        .where(and(eq(messages.id, messageId), eq(messages.senderId, userId)));
+
+      res.status(200).json({ message: "Message updated" });
       return;
     } catch (error) {
       console.error(error);

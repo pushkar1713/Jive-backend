@@ -11,6 +11,7 @@ import {
   handleAttachments,
   handleMessages,
 } from "../services/handleMessages.js";
+import { getDMChannel } from "../services/getDM.js";
 
 export class SocketController {
   static async joinWorkspace(socket: Socket) {
@@ -161,6 +162,50 @@ export class SocketController {
       },
     );
   } */
+
+  static async joinDMChannel(socket: Socket) {
+    socket.on(
+      "joinDMChannel",
+      async function joinDMChannelHandler(
+        data: { targetUserId: string; workspaceId: string },
+        cb,
+      ) {
+        try {
+          if (!socket.data.user) {
+            return socket.emit("error", {
+              success: false,
+              message: "User not authenticated",
+            });
+          }
+
+          const dmChannel = await getDMChannel({
+            userId: socket.data.user.id,
+            targetUserId: data.targetUserId,
+            workspaceId: data.workspaceId,
+          });
+
+          if (!dmChannel.success || !dmChannel.result) {
+            return socket.emit("error", {
+              success: false,
+              message: "DM channel not found",
+            });
+          }
+
+          const channelId = dmChannel.result[0].channel.id;
+
+          socket.join(channelId);
+          socket.data.joinedRooms.push(channelId);
+
+          cb?.(null, {
+            message: "Joined DM channel successfully",
+            roomId: channelId,
+          });
+        } catch (error) {
+          cb(error, null);
+        }
+      },
+    );
+  }
 
   static async sendMessage(socket: Socket, io: Server) {
     socket.on(

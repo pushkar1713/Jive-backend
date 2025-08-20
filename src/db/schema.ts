@@ -45,6 +45,7 @@ export const channel = pgTable(
     channelPermission: channelPermission("channelPermission").default("public"),
     type: channelTypeEnum("channelType").notNull().default("chat"),
     isDefault: boolean("is_default").default(false),
+    isDM: boolean("is_dm").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -99,7 +100,9 @@ export const messageAttachments = pgTable("message_attachments", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  messageId: text("message_id").references(() => messages.id),
+  messageId: text("message_id").references(() => messages.id, {
+    onDelete: "cascade",
+  }),
   key: text("key").notNull(),
   contentType: text("content_type").notNull(),
   size: bigint("size", { mode: "number" }).notNull(),

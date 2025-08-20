@@ -8,6 +8,17 @@ const createChannelSchema = z.object({
   isDefault: z.boolean(),
 });
 
-type CreateChannelType = z.infer<typeof createChannelSchema>;
+const createDMChannelSchema = z.object({
+  targetUserId: z.string(),
+  workspaceId: z.string(),
+});
 
-export { createChannelSchema, CreateChannelType };
+type CreateChannelType = z.infer<typeof createChannelSchema>;
+type CreateDMChannelType = z.infer<typeof createDMChannelSchema>;
+
+export {
+  createChannelSchema,
+  CreateChannelType,
+  createDMChannelSchema,
+  CreateDMChannelType,
+};
