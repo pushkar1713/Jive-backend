@@ -30,15 +30,15 @@
 9. default room for broadcasting messages, leave room logic
 10. personal message
 11. delete and edit messages
+12. global error handler
 
 ### what to add now
 1. queues, producer, consumer for mailing and stuff
 2. indexing in db
 3. abstract userId middleware
-4. global error handler
-5. dummuy delete workspaces and channels
-6. reactions, typing presense, mentions, search, threading/replies
-7. logging and analytics
-8. canvas
-9. voice chat, stream
-10. google login
+4. dummuy delete workspaces and channels
+5. reactions, typing presense, mentions, search, threading/replies
+6. logging and analytics
+7. canvas
+8. voice chat, stream
+9. google login

@@ -12,16 +12,16 @@ import {
   CreateDMChannelType,
 } from "../validations/channel.validator.js";
 import { getDMChannel } from "../services/getDM.js";
+import { BaseError, ErrorFactory } from "../error.js";
+import { globalErrorHandler } from "../globalErrorHandler.js";
+import { apiResponse } from "../globalResponseHandler.js";
 
 export class ChannelController {
   static async createChannel(req: Request, res: Response): Promise<void> {
     const { workspaceId, name, permission, type, isDefault } =
       req.body as CreateChannelType;
     if (!workspaceId || !name) {
-      res
-        .status(400)
-        .json({ message: "either workspaceId or name is missing" });
-      return;
+      throw ErrorFactory.badRequest("either workspaceId or name is missing");
     }
     try {
       const result = await db.transaction(async (tx) => {
@@ -48,34 +48,35 @@ export class ChannelController {
         return { channel: channelData[0], members };
       });
 
-      res.status(200).json({ message: "Channel created", result });
+      if (!result) {
+        throw ErrorFactory.dbOperation("failed to create channel");
+      }
+
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Channel created",
+        data: result,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
   static async createDMChannel(req: Request, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(400).json({ message: "User ID is missing" });
-      return;
+      throw ErrorFactory.badRequest("User ID is missing");
     }
     const { targetUserId, workspaceId } = req.body as CreateDMChannelType;
     if (!targetUserId || !workspaceId) {
-      res
-        .status(400)
-        .json({ message: "targetUserId or workspaceId is missing" });
-      return;
+      throw ErrorFactory.badRequest("targetUserId or workspaceId is missing");
     }
 
     if (userId === targetUserId) {
-      res
-        .status(400)
-        .json({ message: "You cannot create a DM channel with yourself" });
-      return;
+      throw ErrorFactory.badRequest(
+        "You cannot create a DM channel with yourself",
+      );
     }
 
     const dmChannel = await getDMChannel({
@@ -85,9 +86,10 @@ export class ChannelController {
     });
 
     if (dmChannel.success) {
-      res.status(200).json({
+      apiResponse(res, {
+        statusCode: 200,
         message: "DM channel already exists",
-        result: dmChannel.result,
+        data: dmChannel.result,
       });
       return;
     }
@@ -129,12 +131,19 @@ export class ChannelController {
           members: [members[0], secondMember[0]],
         };
       });
-      res.status(200).json({ message: "DM channel created", result });
+
+      if (!result) {
+        throw ErrorFactory.dbOperation("failed to create DM channel");
+      }
+
+      apiResponse(res, {
+        statusCode: 200,
+        message: "DM channel created",
+        data: result,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
   static async joinPublicChannel(req: Request, res: Response): Promise<void> {
@@ -143,20 +152,17 @@ export class ChannelController {
       workspaceId: string;
     };
     if (!channelId || !workspaceId) {
-      res.status(400).json({ message: "channelId is missing" });
-      return;
+      throw ErrorFactory.badRequest("channelId is missing");
     }
     if (!req.user?.id) {
-      res.status(400).json({ message: "User ID is missing" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     const channelType = await db
       .select()
       .from(channel)
       .where(eq(channel.id, channelId));
     if (channelType[0].channelPermission === "private") {
-      res.status(400).json({ message: "Channel is private" });
-      return;
+      throw ErrorFactory.badRequest("Channel is private");
     }
 
     const isMemberWorkspace = await db
@@ -169,10 +175,7 @@ export class ChannelController {
         ),
       );
     if (isMemberWorkspace.length === 0) {
-      res
-        .status(400)
-        .json({ message: "User is not a member of the workspace" });
-      return;
+      throw ErrorFactory.badRequest("User is not a member of the workspace");
     }
 
     const isMemberChannel = await db
@@ -185,10 +188,7 @@ export class ChannelController {
         ),
       );
     if (isMemberChannel.length > 0) {
-      res
-        .status(400)
-        .json({ message: "User is already a member of the channel" });
-      return;
+      throw ErrorFactory.badRequest("User is already a member of the channel");
     }
 
     try {
@@ -200,12 +200,17 @@ export class ChannelController {
           role: "member",
         })
         .returning();
-      res.status(200).json({ message: "Joined public channel", result });
+      if (!result) {
+        throw ErrorFactory.dbOperation("failed to join public channel");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Joined public channel",
+        data: result,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 }

@@ -2,6 +2,7 @@ import { RequestHandler } from "express";
 import { db } from "../index.js";
 import { channelMembers, workspaceMembers } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
+import { ErrorFactory } from "../error.js";
 
 const ROLE_WEIGHT = { member: 0, moderator: 1, admin: 2, owner: 3 } as const;
 
@@ -31,7 +32,7 @@ export const checkPermission =
       const userId = req.user?.id;
 
       if (!userId) {
-        return next(new Error("Unauthorized"));
+        throw ErrorFactory.unauthorized();
       }
 
       const data = await db
@@ -45,7 +46,7 @@ export const checkPermission =
         );
 
       if (data.length === 0) {
-        return next(new Error("Forbidden"));
+        throw ErrorFactory.forbidden();
       }
 
       const permission = data[0].role as role;
@@ -63,7 +64,7 @@ export const checkPermission =
       const userId = req.user?.id;
 
       if (!userId) {
-        return next(new Error("Unauthorized"));
+        throw ErrorFactory.unauthorized();
       }
 
       const data = await db
@@ -77,7 +78,7 @@ export const checkPermission =
         );
 
       if (data.length === 0) {
-        return next(new Error("Forbidden"));
+        throw ErrorFactory.forbidden();
       }
 
       const permission = data[0].role as role;
@@ -90,6 +91,5 @@ export const checkPermission =
       }
     }
 
-    _res.status(403).json({ message: "Forbidden" });
-    return next(new Error("Forbidden"));
+    throw ErrorFactory.forbidden("Forbidden");
   };

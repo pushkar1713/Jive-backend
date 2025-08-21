@@ -8,6 +8,9 @@ import {
   channelMembership,
   workspaceMembership,
 } from "../services/checkMembership.js";
+import { ErrorFactory, BaseError } from "../error.js";
+import { globalErrorHandler } from "../globalErrorHandler.js";
+import { apiResponse } from "../globalResponseHandler.js";
 
 export class MessageController {
   static async getMessages(req: Request, res: Response): Promise<void> {
@@ -16,8 +19,7 @@ export class MessageController {
       const userId = req.user?.id;
 
       if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       const messageData = await db
@@ -36,6 +38,10 @@ export class MessageController {
         )
         .limit(25)
         .offset((page - 1) * 25);
+
+      if (messageData.length === 0) {
+        throw ErrorFactory.notFound("No messages found");
+      }
 
       const transformedMessageData = await Promise.all(
         messageData.map(async (message) => {
@@ -58,14 +64,14 @@ export class MessageController {
         }),
       );
 
-      res.status(200).json({
-        messages: transformedMessageData,
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Messages fetched successfully",
+        data: transformedMessageData,
       });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -79,28 +85,27 @@ export class MessageController {
       const userId = req.user?.id;
 
       if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       const isWorkspaceMember = await workspaceMembership(workspaceId, userId);
       const isChannelMember = await channelMembership(channelId, userId);
 
       if (!isWorkspaceMember || !isChannelMember) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       await db
         .delete(messages)
         .where(and(eq(messages.id, messageId), eq(messages.senderId, userId)));
 
-      res.status(200).json({ message: "Message deleted" });
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Message deleted",
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -116,16 +121,14 @@ export class MessageController {
       const userId = req.user?.id;
 
       if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       const isWorkspaceMember = await workspaceMembership(workspaceId, userId);
       const isChannelMember = await channelMembership(channelId, userId);
 
       if (!isWorkspaceMember || !isChannelMember) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       const message = await db
@@ -134,13 +137,11 @@ export class MessageController {
         .where(eq(messages.id, messageId));
 
       if (message.length === 0) {
-        res.status(404).json({ message: "Message not found" });
-        return;
+        throw ErrorFactory.notFound("Message not found");
       }
 
       if (message[0].senderId !== userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
+        throw ErrorFactory.unauthorized();
       }
 
       await db
@@ -148,12 +149,13 @@ export class MessageController {
         .set({ content })
         .where(and(eq(messages.id, messageId), eq(messages.senderId, userId)));
 
-      res.status(200).json({ message: "Message updated" });
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Message updated",
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 }

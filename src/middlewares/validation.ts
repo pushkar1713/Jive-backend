@@ -1,5 +1,6 @@
 import { ZodType } from "zod";
 import { Request, Response, NextFunction } from "express";
+import { ErrorFactory } from "../error.js";
 
 export const validate = (schema: ZodType) => {
   return async (
@@ -10,8 +11,7 @@ export const validate = (schema: ZodType) => {
     try {
       const result = schema.safeParse(req.body);
       if (!result.success) {
-        res.status(400).json({ message: result.error.message });
-        return;
+        throw ErrorFactory.validation(result.error);
       }
       next();
     } catch (error) {

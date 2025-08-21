@@ -7,6 +7,7 @@ import { checkPermission } from "../middlewares/checkPermission.js";
 import { Scope } from "../middlewares/checkPermission.js";
 
 const router = Router();
+router.use(verifyAuth);
 
 router.post(
   "/create",

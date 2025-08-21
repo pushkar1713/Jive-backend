@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../lib/auth.js";
+import { ErrorFactory } from "../error.js";
 
 export const verifyAuth = async (
   req: Request,
@@ -11,8 +12,7 @@ export const verifyAuth = async (
     headers: fromNodeHeaders(req.headers),
   });
   if (!session) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    throw ErrorFactory.unauthorized();
   }
   req.user = session.user;
   next();

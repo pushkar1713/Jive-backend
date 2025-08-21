@@ -4,21 +4,21 @@ import { S3 } from "../config/blobStorageConfig.js";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "crypto";
-import { toJSONSchema } from "zod";
+import { BaseError, ErrorFactory } from "../error.js";
+import { globalErrorHandler } from "../globalErrorHandler.js";
+import { apiResponse } from "../globalResponseHandler.js";
 
 export class UploadController {
   static async getPresignedUrl(req: Request, res: Response): Promise<void> {
     try {
       const { fileName, contentType, size } = req.body as MessageAttachment;
       if (!fileName || !contentType || !size) {
-        res.status(400).json({ error: "Invalid request body" });
-        return;
+        throw ErrorFactory.badRequest("Invalid request body");
       }
 
       const allowed = new Set(["image/jpeg", "image/png", "application/pdf"]);
       if (!allowed.has(contentType)) {
-        res.status(415).json({ error: "Unsupported content type" });
-        return;
+        throw ErrorFactory.badRequest("Unsupported content type");
       }
 
       const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
@@ -35,15 +35,14 @@ export class UploadController {
         expiresIn: 60 * 5,
       });
 
-      res.status(200).json({
-        presignedUrl,
-        key,
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Presigned URL generated successfully",
+        data: { presignedUrl, key },
       });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -51,8 +50,7 @@ export class UploadController {
     try {
       const key = req.query.key as string;
       if (!key) {
-        res.status(400).json({ error: "Key is required" });
-        return;
+        throw ErrorFactory.badRequest("Key is required");
       }
 
       const getObj = new GetObjectCommand({
@@ -61,19 +59,21 @@ export class UploadController {
       });
 
       const url = await getSignedUrl(S3, getObj, { expiresIn: 60 * 5 });
-      res.status(200).json({ url });
+      apiResponse(res, {
+        statusCode: 200,
+        message: "File URL generated successfully",
+        data: { url },
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
   static async getFileUrl(key: string) {
     try {
       if (!key) {
-        throw new Error("Key is required");
+        throw ErrorFactory.badRequest("Key is required");
       }
 
       const getObj = new GetObjectCommand({

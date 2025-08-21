@@ -12,14 +12,16 @@ import { v4 as uuidv4 } from "uuid";
 import { and, eq } from "drizzle-orm";
 import { getWorkspaceByJoinCode } from "../services/getWorkspaceByCode.js";
 import { checkOwner } from "../services/checkOwner.js";
+import { ErrorFactory, BaseError } from "../error.js";
+import { globalErrorHandler } from "../globalErrorHandler.js";
+import { apiResponse } from "../globalResponseHandler.js";
 
 export class WorkspaceController {
   static async createWorkspace(req: Request, res: Response): Promise<void> {
     const { name, description } = req.body as createWorkspaceType;
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     try {
       const workspaceData = await db.transaction(async (tx) => {
@@ -55,20 +57,25 @@ export class WorkspaceController {
           channel: channelPayload,
         };
       });
-      res.status(201).json(workspaceData);
+
+      if (!workspaceData) {
+        throw ErrorFactory.dbOperation("failed to create workspace");
+      }
+      apiResponse(res, {
+        statusCode: 201,
+        message: "Workspace created successfully",
+        data: workspaceData,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
   static async getWorkspacesOfUser(req: Request, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     try {
       const result = await db
@@ -78,12 +85,18 @@ export class WorkspaceController {
         .from(workspaceMembers)
         .innerJoin(workspace, eq(workspaceMembers.workspaceId, workspace.id))
         .where(eq(workspaceMembers.userId, userId));
-      res.status(200).json(result);
+
+      if (!result) {
+        throw ErrorFactory.notFound("No workspaces found");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Workspaces fetched successfully",
+        data: result,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -91,15 +104,12 @@ export class WorkspaceController {
     const { joinCode } = req.params as { joinCode: string };
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     try {
       const workspace = await getWorkspaceByJoinCode(joinCode);
-      console.log(workspace);
       if (workspace instanceof Error) {
-        res.status(400).json({ message: "Invalid join code" });
-        return;
+        throw ErrorFactory.badRequest("Invalid join code");
       }
 
       const isMember = await db
@@ -112,8 +122,7 @@ export class WorkspaceController {
           ),
         );
       if (isMember.length > 0) {
-        res.status(400).json({ message: "Already a member of this workspace" });
-        return;
+        throw ErrorFactory.badRequest("Already a member of this workspace");
       }
 
       const addMember = await db
@@ -124,12 +133,18 @@ export class WorkspaceController {
           userId,
         })
         .returning();
-      res.status(200).json({ message: "Joined workspace", addMember });
+
+      if (!addMember) {
+        throw ErrorFactory.dbOperation("failed to join workspace");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Joined workspace",
+        data: addMember,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -142,22 +157,17 @@ export class WorkspaceController {
       memberId: string;
     };
     if (!workspaceId || !memberId) {
-      res
-        .status(400)
-        .json({ message: "either workspaceId or memberId is missing" });
-      return;
+      throw ErrorFactory.badRequest(
+        "either workspaceId or memberId is missing",
+      );
     }
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     const isOwner = await checkOwner(workspaceId, userId);
     if (!isOwner) {
-      res
-        .status(403)
-        .json({ message: "You are not the owner of this workspace" });
-      return;
+      throw ErrorFactory.forbidden("You are not the owner of this workspace");
     }
     try {
       const isMember = await db
@@ -170,10 +180,9 @@ export class WorkspaceController {
           ),
         );
       if (isMember.length > 0) {
-        res
-          .status(400)
-          .json({ message: "Member already exists in this workspace" });
-        return;
+        throw ErrorFactory.badRequest(
+          "Member already exists in this workspace",
+        );
       }
       const addMember = await db
         .insert(workspaceMembers)
@@ -183,6 +192,10 @@ export class WorkspaceController {
           role: "member",
         })
         .returning();
+
+      if (!addMember) {
+        throw ErrorFactory.dbOperation("failed to add member to workspace");
+      }
 
       const getChannel = await db
         .select()
@@ -194,6 +207,10 @@ export class WorkspaceController {
           ),
         );
 
+      if (!getChannel) {
+        throw ErrorFactory.dbOperation("failed to get channel");
+      }
+
       const addMemberToChannel = await db
         .insert(channelMembers)
         .values({
@@ -201,36 +218,44 @@ export class WorkspaceController {
           userId: memberId,
         })
         .returning();
-      res.status(200).json({
+
+      if (!addMemberToChannel) {
+        throw ErrorFactory.dbOperation("failed to add member to channel");
+      }
+
+      apiResponse(res, {
+        statusCode: 200,
         message: "Member added to workspace",
-        addMember,
-        addMemberToChannel,
+        data: addMember,
       });
       return;
     } catch (error) {
       console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
   static async getWorkspaceMembers(req: Request, res: Response): Promise<void> {
     const { workspaceId } = req.params as { workspaceId: string };
     if (!workspaceId) {
-      res.status(400).json({ message: "workspaceId is missing" });
-      return;
+      throw ErrorFactory.badRequest("workspaceId is missing");
     }
     try {
       const members = await db
         .select()
         .from(workspaceMembers)
         .where(eq(workspaceMembers.workspaceId, workspaceId));
-      res.status(200).json(members);
+      if (!members) {
+        throw ErrorFactory.notFound("No members found");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Members fetched successfully",
+        data: members,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -241,24 +266,19 @@ export class WorkspaceController {
     const { workspaceId } = req.params as { workspaceId: string };
 
     if (!workspaceId) {
-      res.status(400).json({ message: "workspaceId is missing" });
-      return;
+      throw ErrorFactory.badRequest("workspaceId is missing");
     }
 
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
 
     const isOwner = await checkOwner(workspaceId, userId);
 
     if (!isOwner) {
-      res
-        .status(403)
-        .json({ message: "You are not the owner of this workspace" });
-      return;
+      throw ErrorFactory.forbidden("You are not the owner of this workspace");
     }
     try {
       const channels = await db
@@ -266,12 +286,17 @@ export class WorkspaceController {
         .from(workspaceChannels)
         .innerJoin(channel, eq(workspaceChannels.channelId, channel.id))
         .where(eq(workspaceChannels.workspaceId, workspaceId));
-      res.status(200).json(channels);
+      if (!channels) {
+        throw ErrorFactory.notFound("No channels found");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Channels fetched successfully",
+        data: channels,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -282,15 +307,13 @@ export class WorkspaceController {
     const { workspaceId } = req.params as { workspaceId: string };
 
     if (!workspaceId) {
-      res.status(400).json({ message: "workspaceId is missing" });
-      return;
+      throw ErrorFactory.badRequest("workspaceId is missing");
     }
 
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
 
     try {
@@ -304,12 +327,17 @@ export class WorkspaceController {
             eq(channelMembers.userId, userId),
           ),
         );
-      res.status(200).json(channels);
+      if (!channels) {
+        throw ErrorFactory.notFound("No channels found");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Channels fetched successfully",
+        data: channels,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 
@@ -317,16 +345,12 @@ export class WorkspaceController {
     const { workspaceId } = req.params as { workspaceId: string };
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     const isOwner = await checkOwner(workspaceId, userId);
 
     if (!isOwner) {
-      res
-        .status(403)
-        .json({ message: "You are not the owner of this workspace" });
-      return;
+      throw ErrorFactory.forbidden("You are not the owner of this workspace");
     }
 
     const { name, description } = req.body as {
@@ -343,20 +367,25 @@ export class WorkspaceController {
         })
         .where(eq(workspace.id, workspaceId))
         .returning();
-      res.status(200).json(result);
+      if (!result) {
+        throw ErrorFactory.dbOperation("failed to edit workspace");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Workspace edited successfully",
+        data: result,
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
+
   static async deleteWorkspace(req: Request, res: Response): Promise<void> {
     const { workspaceId } = req.params;
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
+      throw ErrorFactory.unauthorized();
     }
     // const isOwner = await checkOwner(workspaceId, userId);
     // if (!isOwner) {
@@ -369,12 +398,16 @@ export class WorkspaceController {
       const result = await db
         .delete(workspace)
         .where(eq(workspace.id, workspaceId));
-      res.status(200).json({ message: "Workspace deleted" });
+      if (!result) {
+        throw ErrorFactory.dbOperation("failed to delete workspace");
+      }
+      apiResponse(res, {
+        statusCode: 200,
+        message: "Workspace deleted",
+      });
       return;
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-      return;
+      globalErrorHandler(error as BaseError, req, res);
     }
   }
 }
